@@ -54,6 +54,12 @@ class Particle(object):
         orientation_tuple = tf.transformations.quaternion_from_euler(0,0,self.theta)
         return Pose(position=Point(x=self.x,y=self.y,z=0), orientation=Quaternion(x=orientation_tuple[0], y=orientation_tuple[1], z=orientation_tuple[2], w=orientation_tuple[3]))
 
+    def move_forward(self, dist):
+        p_delta = (math.cos(self.theta)*dist,
+                   math.sin(self.theta)*dist)
+        self.x += p_delta[0]
+        self.y += p_delta[1]
+
     # TODO: define additional helper functions if needed
 
 class ParticleFilter:
@@ -145,19 +151,30 @@ class ParticleFilter:
         """
         new_odom_xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
         # compute the change in x,y,theta since our last update
+        r0 = 0
+        r1 = 0
+        r2 = 0
+        d = 0
+
         if self.current_odom_xy_theta:
-            old_odom_xy_theta = self.current_odom_xy_theta
             delta = (new_odom_xy_theta[0] - self.current_odom_xy_theta[0],
                      new_odom_xy_theta[1] - self.current_odom_xy_theta[1],
                      new_odom_xy_theta[2] - self.current_odom_xy_theta[2])
+            r0 = math.atan(delta[1]/delta[0])
+            r1 = r0 - self.current_odom_xy_theta[2]
+            r2 = delta[2] - r1
+            d = ((delta[0]**2) + (delta[1]**2))**0.5
 
             self.current_odom_xy_theta = new_odom_xy_theta
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
-        # TODO: modify particles using delta
-        # For added difficulty: Implement sample_motion_odometry (Prob Rob p 136)
+        for particle in self.particle_cloud:
+            particle.theta += r1
+            particle.move_forward(d)
+            particle.theta += r2
+        # TODO (for added difficulty): Implement sample_motion_odometry (Prob Rob p 136)
 
     def map_calc_range(self,x,y,theta):
         """ Difficulty Level 3: implement a ray tracing likelihood model... Let me know if you are interested """
