@@ -14,7 +14,7 @@ import tf
 from tf import TransformListener
 from tf import TransformBroadcaster
 from tf.transformations import euler_from_quaternion, rotation_matrix, quaternion_from_matrix
-from random import gauss
+from random
 
 import math
 import time
@@ -171,9 +171,12 @@ class ParticleFilter:
             return
 
         for particle in self.particle_cloud:
-            particle.theta += r1
+            r1_var = (random.random()*r1*.2) - (.1*r1)
+            r2_var = (random.random()*r2*.2) - (.1*r2)
+            d_var = (random.random()*d*.2) - (.1*d)
+            particle.theta += r1 + r1_var
             particle.move_forward(d)
-            particle.theta += r2
+            particle.theta += r2 + r2_var
         # TODO (for added difficulty): Implement sample_motion_odometry (Prob Rob p 136)
 
     def map_calc_range(self,x,y,theta):
