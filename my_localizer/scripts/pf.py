@@ -233,7 +233,7 @@ class ParticleFilter:
         heaviest_p = self.draw_random_sample(self.particle_cloud,weights[0:24],1)[0]
 
         self.particle_cloud.sort(key=lambda x: x.w)
-        median_w = self.particle_cloud[len(self.particle_cloud)/2]
+        median_w = self.particle_cloud[len(self.particle_cloud)/2].w
 
         while len(self.particle_cloud) < 300:
             self.make_new_particle(heaviest_p.x, heaviest_p.y, heaviest_p.theta, median_w)

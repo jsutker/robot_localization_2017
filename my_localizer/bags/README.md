@@ -1,0 +1,3 @@
+# Bags
+
+We have one test bag, called `test.bag`. We played one one of the predone bags and ran our filter, and we recorded the results so that our filter would be captured. It worked at the beginning of the bag, but then our filter got caught on the corner after the first turn. An improvement to our filter that this would suggest is to base our weight on the distance at a certain angle instead of the closest distance in general.
