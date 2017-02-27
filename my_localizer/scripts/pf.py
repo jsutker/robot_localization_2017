@@ -14,7 +14,7 @@ import tf
 from tf import TransformListener
 from tf import TransformBroadcaster
 from tf.transformations import euler_from_quaternion, rotation_matrix, quaternion_from_matrix
-from random
+import random
 
 import math
 import time
@@ -54,9 +54,15 @@ class Particle(object):
         orientation_tuple = tf.transformations.quaternion_from_euler(0,0,self.theta)
         return Pose(position=Point(x=self.x,y=self.y,z=0), orientation=Quaternion(x=orientation_tuple[0], y=orientation_tuple[1], z=orientation_tuple[2], w=orientation_tuple[3]))
 
-    def move_forward(self, dist):
-        p_delta = (math.cos(self.theta)*dist,
-                   math.sin(self.theta)*dist)
+    def move_forward(self, dist, theta):
+        p_delta = [math.cos(self.theta)*dist,
+                   math.sin(self.theta)*dist]
+
+        if math.cos(self.theta) > 0:
+            p_delta[1] *= -1
+        if math.sin(self.theta) < 0:
+            p_delta[0] *= -1
+
         self.x += p_delta[0]
         self.y += p_delta[1]
 
@@ -121,12 +127,21 @@ class ParticleFilter:
         self.current_odom_xy_theta = []
 
         # request the map from the map server, the map should be of type nav_msgs/OccupancyGrid
-        # TODO: fill in the appropriate service call here.  The resultant map should be assigned be passed
+        # TODONE: fill in the appropriate service call here.  The resultant map should be assigned be passed
         #       into the init method for OccupancyField
-
+        
         # for now we have commented out the occupancy field initialization until you can successfully fetch the map
-        #self.occupancy_field = OccupancyField(map)
+        self.occupancy_field = OccupancyField(self.map_client())
         self.initialized = True
+
+    def map_client(self):
+        rospy.wait_for_service('static_map')
+        try:
+            static_map = rospy.ServiceProxy('static_map', GetMap) # might not be GetMap,...? might be something else TODO: check that
+            respl = static_map()
+            return respl.map
+        except rospy.ServiceException, e:
+            print "Service call failed: %s" % e
 
     def update_robot_pose(self):
         """ Update the estimate of the robot's pose given the updated particles.
@@ -137,9 +152,18 @@ class ParticleFilter:
         # first make sure that the particle weights are normalized
         self.normalize_particles()
 
-        # TODO: assign the lastest pose into self.robot_pose as a geometry_msgs.Pose object
+        # TODONE: assign the lastest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
-        self.robot_pose = Pose()
+        probable_x = 0
+        probable_y = 0
+        probable_theta = 0
+
+        for particle in self.particle_cloud:
+            probable_x += particle.x * particle.w
+            probable_y += particle.y * particle.w
+            probable_theta += particle.theta * particle.w
+
+        self.robot_pose = Particle(x=probable_x, y=probable_y, theta=probable_theta).as_pose()
 
     def update_particles_with_odom(self, msg):
         """ Update the particles using the newly given odometry pose.
@@ -165,17 +189,21 @@ class ParticleFilter:
             r2 = delta[2] - r1
             d = ((delta[0]**2) + (delta[1]**2))**0.5
 
+            print(self.current_odom_xy_theta[2])
+
             self.current_odom_xy_theta = new_odom_xy_theta
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
+        t_noise = 0.05
+        d_noise = 0.40
         for particle in self.particle_cloud:
-            r1_var = (random.random()*r1*.2) - (.1*r1)
-            r2_var = (random.random()*r2*.2) - (.1*r2)
-            d_var = (random.random()*d*.2) - (.1*d)
+            r1_var = r1*t_noise*((random.random()*2) - 1)
+            r2_var = r2*t_noise*((random.random()*2) - 1)
+            d_var = d*d_noise*((random.random()*2) - 1)
             particle.theta += r1 + r1_var
-            particle.move_forward(d)
+            particle.move_forward(d, particle.theta)
             particle.theta += r2 + r2_var
         # TODO (for added difficulty): Implement sample_motion_odometry (Prob Rob p 136)
 
@@ -192,12 +220,51 @@ class ParticleFilter:
         """
         # make sure the distribution is normalized
         self.normalize_particles()
-        # TODO: fill out the rest of the implementation
+        
+        # threshold = .005 # Potentially base threshold on median particle weight?
+
+        
+
+        # self.particle_cloud.sort(key=lambda x: x.w)
+        weights = []
+        for particle in self.particle_cloud:
+            weights.append(particle.w)
+
+        self.particle_cloud = self.draw_random_sample(self.particle_cloud,weights, 25)
+
+        weights = []
+        for particle in self.particle_cloud:
+            weights.append(particle.w)
+
+        # heaviest_p = self.particle_cloud[-1]
+        heaviest_p = self.draw_random_sample(self.particle_cloud,weights[0:24],1)[0]
+
+        median_w = self.particle_cloud[len(self.particle_cloud)/2]
+
+        while len(self.particle_cloud) < 300:
+            self.make_new_particle(heaviest_p.x, heaviest_p.y, heaviest_p.theta, median_w)
+            median_w = self.particle_cloud[len(self.particle_cloud)/2]
+
+        # for particle in self.particle_cloud:
+        #     if particle.w < threshold:
+        #         self.particle_cloud.remove(particle)
+                # self.make_new_particle(heaviest_p.x, heaviest_p.y, heaviest_p.theta, median_w)
+
 
     def update_particles_with_laser(self, msg):
         """ Updates the particle weights in response to the scan contained in the msg """
-        # TODO: implement this
-        pass
+        robo_dist = 100
+        for val in msg.ranges:
+            if (val != 0) and (val < robo_dist):
+                robo_dist = val
+
+        for particle in self.particle_cloud:
+            p_dist = self.occupancy_field.get_closest_obstacle_distance(particle.x, particle.y)
+            if p_dist == float('nan'):
+                p_dist = 1000
+            particle.w = (1/abs(p_dist - robo_dist))**2
+
+        self.normalize_particles()
 
     @staticmethod
     def weighted_values(values, probabilities, size):
@@ -240,15 +307,28 @@ class ParticleFilter:
         if xy_theta == None:
             xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
         self.particle_cloud = []
-        # TODO create particles
+        x, y, theta = xy_theta
+        for p in range(self.n_particles):
+            self.make_new_particle(x, y, theta, 1.0)
 
         self.normalize_particles()
         self.update_robot_pose()
 
+    def make_new_particle(self, x, y, theta, w):
+        sigma = .1 # adjustable value for gaussian distribution of starting points
+        p_x = random.gauss(x, sigma)
+        p_y = random.gauss(y, sigma)
+        p_theta = random.gauss(theta, sigma)
+        p_obj = Particle(x=p_x, y=p_y, theta=p_theta)
+        self.particle_cloud.append(p_obj)
+
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
-        pass
-        # TODO: implement this
+        total_weight = 0
+        for particle in self.particle_cloud:
+            total_weight += particle.w
+        for particle in self.particle_cloud:
+            particle.w /= total_weight
 
     def publish_particles(self, msg):
         particles_conv = []
