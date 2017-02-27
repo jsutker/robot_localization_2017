@@ -196,8 +196,8 @@ class ParticleFilter:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
-        t_noise = 0.05
-        d_noise = 0.40
+        t_noise = 0.20
+        d_noise = 0.80
         for particle in self.particle_cloud:
             r1_var = r1*t_noise*((random.random()*2) - 1)
             r2_var = r2*t_noise*((random.random()*2) - 1)
@@ -225,7 +225,6 @@ class ParticleFilter:
 
         
 
-        # self.particle_cloud.sort(key=lambda x: x.w)
         weights = []
         for particle in self.particle_cloud:
             weights.append(particle.w)
@@ -239,6 +238,7 @@ class ParticleFilter:
         # heaviest_p = self.particle_cloud[-1]
         heaviest_p = self.draw_random_sample(self.particle_cloud,weights[0:24],1)[0]
 
+        self.particle_cloud.sort(key=lambda x: x.w)
         median_w = self.particle_cloud[len(self.particle_cloud)/2]
 
         while len(self.particle_cloud) < 300:
