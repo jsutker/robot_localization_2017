@@ -54,7 +54,8 @@ class Particle(object):
         orientation_tuple = tf.transformations.quaternion_from_euler(0,0,self.theta)
         return Pose(position=Point(x=self.x,y=self.y,z=0), orientation=Quaternion(x=orientation_tuple[0], y=orientation_tuple[1], z=orientation_tuple[2], w=orientation_tuple[3]))
 
-    def move_forward(self, dist, theta):
+    def move_forward(self, dist):
+        """ A helper function to do the math to move a particle 'forward' """
         p_delta = [math.cos(self.theta)*dist,
                    math.sin(self.theta)*dist]
 
@@ -88,7 +89,7 @@ class ParticleFilter:
             particle_cloud: a list of particles representing a probability distribution over robot poses
             current_odom_xy_theta: the pose of the robot in the odometry frame when the last filter update was performed.
                                    The pose is expressed as a list [x,y,theta] (where theta is the yaw)
-            map: the map we will be localizing ourselves in.  The map should be of type nav_msgs/OccupancyGrid
+            occupancy_field: the map we will be localizing ourselves in.  The map should be of type nav_msgs/OccupancyField
     """
     def __init__(self):
         self.initialized = False        # make sure we don't perform updates before everything is setup
@@ -137,7 +138,7 @@ class ParticleFilter:
     def map_client(self):
         rospy.wait_for_service('static_map')
         try:
-            static_map = rospy.ServiceProxy('static_map', GetMap) # might not be GetMap,...? might be something else TODO: check that
+            static_map = rospy.ServiceProxy('static_map', GetMap)
             respl = static_map()
             return respl.map
         except rospy.ServiceException, e:
@@ -152,8 +153,6 @@ class ParticleFilter:
         # first make sure that the particle weights are normalized
         self.normalize_particles()
 
-        # TODONE: assign the lastest pose into self.robot_pose as a geometry_msgs.Pose object
-        # just to get started we will fix the robot's pose to always be at the origin
         probable_x = 0
         probable_y = 0
         probable_theta = 0
@@ -203,7 +202,7 @@ class ParticleFilter:
             r2_var = r2*t_noise*((random.random()*2) - 1)
             d_var = d*d_noise*((random.random()*2) - 1)
             particle.theta += r1 + r1_var
-            particle.move_forward(d, particle.theta)
+            particle.move_forward(d)
             particle.theta += r2 + r2_var
         # TODO (for added difficulty): Implement sample_motion_odometry (Prob Rob p 136)
 
@@ -221,10 +220,6 @@ class ParticleFilter:
         # make sure the distribution is normalized
         self.normalize_particles()
         
-        # threshold = .005 # Potentially base threshold on median particle weight?
-
-        
-
         weights = []
         for particle in self.particle_cloud:
             weights.append(particle.w)
@@ -235,7 +230,6 @@ class ParticleFilter:
         for particle in self.particle_cloud:
             weights.append(particle.w)
 
-        # heaviest_p = self.particle_cloud[-1]
         heaviest_p = self.draw_random_sample(self.particle_cloud,weights[0:24],1)[0]
 
         self.particle_cloud.sort(key=lambda x: x.w)
@@ -243,13 +237,6 @@ class ParticleFilter:
 
         while len(self.particle_cloud) < 300:
             self.make_new_particle(heaviest_p.x, heaviest_p.y, heaviest_p.theta, median_w)
-            median_w = self.particle_cloud[len(self.particle_cloud)/2]
-
-        # for particle in self.particle_cloud:
-        #     if particle.w < threshold:
-        #         self.particle_cloud.remove(particle)
-                # self.make_new_particle(heaviest_p.x, heaviest_p.y, heaviest_p.theta, median_w)
-
 
     def update_particles_with_laser(self, msg):
         """ Updates the particle weights in response to the scan contained in the msg """
@@ -315,6 +302,13 @@ class ParticleFilter:
         self.update_robot_pose()
 
     def make_new_particle(self, x, y, theta, w):
+        """ A Helper method to make a new particle object and insert it into the particle cloud.
+            Arguments
+            x: the x-position to approximately assign
+            y: the y-position to approximately assign
+            theta: the yaw to approximately assign
+            w: the particle weight (removes normalization) """
+
         sigma = .1 # adjustable value for gaussian distribution of starting points
         p_x = random.gauss(x, sigma)
         p_y = random.gauss(y, sigma)
