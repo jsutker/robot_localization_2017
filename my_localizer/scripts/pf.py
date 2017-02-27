@@ -55,7 +55,7 @@ class Particle(object):
         return Pose(position=Point(x=self.x,y=self.y,z=0), orientation=Quaternion(x=orientation_tuple[0], y=orientation_tuple[1], z=orientation_tuple[2], w=orientation_tuple[3]))
 
     def move_forward(self, dist):
-        """ A helper function to do the math to move a particle 'forward' """
+        """ A helper function to do the math to move a particle in its theta direction """
         p_delta = [math.cos(self.theta)*dist,
                    math.sin(self.theta)*dist]
 
